@@ -1,0 +1,111 @@
+---
+title: "FA Assignment 7"
+author: "Yunshuang Jiang"
+date: "2/15/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Using the options data from file OptionsPrices.csv used in the workshop calculate the P&L breakdown into delta, gamma and vega components of 1425 December 2007 put for each day between 2/27/2007 and 3/5/2007.
+
+Compare actual P&L for 1425 December 2007 put with the estimated daily P&L for each day between 2/27/2007 and 3/5/2007.
+
+Put the results in table with columns: actual P&L, estimated P&L, delta P&L, gamma P&L, vega P&L.
+
+
+```{r}
+datapath <- "/Users/berryjiang/Downloads/"
+optionsData = read.csv(paste(datapath,'OptionsPrices.csv',sep='/'),header=TRUE,row.names=1,sep=",")
+
+suppressWarnings(library(RQuantLib))
+suppressWarnings(library(fOptions))
+```
+
+
+```{r}
+calculateImpliedVolatility<-function(dataRow){
+  myExpiry<-dataRow[1]/365
+  myRate<-dataRow[2]
+  myUnderlying<-dataRow[3]
+  myPutStrikes<-dataRow[4:8] #s1-5
+  myCallStrikes<-dataRow[9:14] #s6-11
+  myPutPrices<-dataRow[15:19] #p1-5
+  myCallPrices<-dataRow[20:25] #c6-11
+  impVolPuts<-apply(rbind(myPutPrices,myPutStrikes),2, 
+                    function(z) EuropeanOptionImpliedVolatility("put", 
+                                                                value=z[1],
+                                                                underlying=myUnderlying, 
+                                                                strike=z[2],
+                                                                dividendYield=myRate,
+                                                                riskFreeRate=myRate,
+                                                                maturity=myExpiry,
+                                                                volatility=.3))
+  impVolCalls<-apply(rbind(myCallPrices,myCallStrikes),2,
+                     function(z) EuropeanOptionImpliedVolatility("call",
+                                                                 value=z[1],
+                                                                 underlying=myUnderlying,
+                                                                 strike=z[2],
+                                                                 dividendYield=myRate,
+                                                                 riskFreeRate=myRate,
+                                                                 maturity=myExpiry,
+                                                                 volatility=.3))
+  Result<-cbind(Strikes=c(myPutStrikes,myCallStrikes),Volatilities=c(impVolPuts,impVolCalls))
+  rownames(Result)<-c(rep("P",5),rep("C",6))
+  Result
+}
+
+put1425.impliedVolatilities <- c()
+for (i in 1:7) {
+put1425.impliedVolatilities[i] =
+  EuropeanOptionImpliedVolatility("put",value=optionsData[i,26],underlying=optionsData[i,3], 
+                                strike=1425,dividendYield=optionsData[i,2],
+                                riskFreeRate=optionsData[i,2],
+                                maturity=optionsData[i,1]/365,volatility=.3)*100}
+
+currentPutValue <- c()
+for (i in 1:7){
+currentPutValue[[i]] = EuropeanOption(type="put", underlying=optionsData[i,3], strike=1425,
+                                      dividendYield=optionsData[i,2], riskFreeRate=optionsData[i,2],
+                                      maturity=optionsData[i,1]/365,
+                                      volatility=put1425.impliedVolatilities[i]/100)}
+
+
+deltaPNL <- c(as.numeric(currentPutValue[[2]][2])*(optionsData[3,3]-optionsData[2,3]),
+              as.numeric(currentPutValue[[3]][2])*(optionsData[4,3]-optionsData[3,3]),
+              as.numeric(currentPutValue[[4]][2])*(optionsData[5,3]-optionsData[4,3]),
+              as.numeric(currentPutValue[[5]][2])*(optionsData[6,3]-optionsData[5,3]),
+              as.numeric(currentPutValue[[6]][2])*(optionsData[7,3]-optionsData[6,3]))
+
+gammaPNL <- c(.5*as.numeric(currentPutValue[[2]][3])*(optionsData[3,3]-optionsData[2,3])^2,
+              .5*as.numeric(currentPutValue[[3]][3])*(optionsData[4,3]-optionsData[3,3])^2,
+              .5*as.numeric(currentPutValue[[4]][3])*(optionsData[5,3]-optionsData[4,3])^2,
+              .5*as.numeric(currentPutValue[[5]][3])*(optionsData[6,3]-optionsData[5,3])^2,
+              .5*as.numeric(currentPutValue[[6]][3])*(optionsData[7,3]-optionsData[6,3])^2)
+
+vegaPNL <- c(as.numeric(currentPutValue[[2]][4])/100*(put1425.impliedVolatilities[3]-
+                                                        put1425.impliedVolatilities[2]),
+             as.numeric(currentPutValue[[3]][4])/100*(put1425.impliedVolatilities[4]-
+                                                        put1425.impliedVolatilities[3]),
+             as.numeric(currentPutValue[[4]][4])/100*(put1425.impliedVolatilities[5]-
+                                                        put1425.impliedVolatilities[4]),
+             as.numeric(currentPutValue[[5]][4])/100*(put1425.impliedVolatilities[6]-
+                                                        put1425.impliedVolatilities[5]),
+             as.numeric(currentPutValue[[6]][4])/100*(put1425.impliedVolatilities[7]-
+                                                        put1425.impliedVolatilities[6]))
+
+actualPNL <- c(optionsData[3,26]-optionsData[2,26],optionsData[4,26]-optionsData[3,26],
+               optionsData[5,26]-optionsData[4,26],optionsData[6,26]-optionsData[5,26],
+               optionsData[7,26]-optionsData[6,26])
+
+estimatedPNL <- c(deltaPNL[1]+gammaPNL[1]+vegaPNL[1],deltaPNL[2]+gammaPNL[2]+vegaPNL[2],
+                  deltaPNL[3]+gammaPNL[3]+vegaPNL[3],deltaPNL[4]+gammaPNL[4]+vegaPNL[4],
+                  deltaPNL[5]+gammaPNL[5]+vegaPNL[5])
+
+results <- cbind(actualPNL,estimatedPNL,deltaPNL,gammaPNL,vegaPNL)
+rownames(results) <- rownames(optionsData)[2:6]
+results
+```
+

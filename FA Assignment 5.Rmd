@@ -1,0 +1,218 @@
+---
+title: "FA Assignment 5"
+author: "Yunshuang Jiang"
+date: "2/9/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Analysis of Moody’s Bond Yields.\
+&nbsp;
+
+Consider the monthly yields f Moody’s AAA and BAA bonds from exercises 4-6 on page 126. The data are in the file MYieldsData.csv. Analyze possible types of relationships between the two yield variables using regression model with stationary residuals and cointegration. What is a valid model for predicting the data?\
+
+#Load Data
+```{r}
+yield <- read.csv("~/Downloads/documents_Financial Analytics (32001)_Lecture 5_MYieldsData.csv")
+aaa<- yield[,2]
+baa <- yield[,3]
+
+plot(aaa,col ="blue",type="l",lwd=2,main = "1 and 3 year constant maturity rates")
+lines(baa,col="orange",lwd=2,main = "1 and 3 year constant maturity rates")
+```
+&nbsp;
+&nbsp;
+
+#try linear regression on original data
+```{r}
+linreg <-lm(aaa~baa)
+residuals <- linreg$residuals
+plot(residuals,type="l",col ="blue")
+acf(residuals,col ="blue",lty=1 ,lwd = 4)
+Box.test(residuals,lag=10,type='Ljung')
+
+#this suggest the residuals are non-stationary
+```
+&nbsp;
+&nbsp;
+
+#try linear regression of difference of the data
+```{r}
+daaa <- diff(aaa)
+dbaa <- diff(baa)
+dlinreg <-lm(daaa~dbaa)
+dresiduals <- dlinreg$residuals
+plot(dresiduals,type="l",col ="blue")
+acf(dresiduals,col ="blue",lty=1 ,lwd = 4)
+Box.test(dresiduals,lag=10,type='Ljung')
+
+#after taking diff of the data, the residuals look more stationary
+```
+&nbsp;
+&nbsp;
+
+#Estimate MA(3) model and explore the residuals.
+
+```{r}
+(ma3<-arima(dresiduals,order=c(0,0,3)))
+tsdiag(ma3,gof=12)
+#the standardized residuals looks reasonably random
+#the p values are mostly above 0
+#hence this is a value model for the residuals
+```
+&nbsp;
+&nbsp;
+
+#predict
+```{r}
+theta1 <-ma3$coef[1]
+a_t <- theta1 *residuals(ma3)
+x_1<-aaa[-length(aaa)]
+forec <- x_1 + dlinreg$coefficients*dbaa+a_t
+matplot(cbind(aaa[-1],forec),type = "l",col = c("blue","orange"),lwd=c(2,1),main= "AAA Yield and forecast",ylab="AAA Yield and Forecast")
+legend("topright", c("AAA Yield","Forecasts"), lwd=2,col = c("blue","red"), bty="n")
+
+#the forecasts suggests that this model is reasonable
+```
+&nbsp;
+&nbsp;
+
+#Try Cointegration
+
+```{r}
+n <- length(baa)
+nb <-max(n-900,1)
+baa1 <- baa[nb:n]
+aaa1 <- aaa[nb:n]
+plot(baa1,col ="blue",type="l",lwd=2,main = "AAA and BAA Yield")
+lines(aaa1,lwd=2,col="orange")
+```
+&nbsp;
+&nbsp;
+
+# Fit cointegration model
+
+```{r}
+library(urca)
+data <- cbind(baa1,aaa1)
+cajo <- ca.jo(data, ecdet = "none", type="eigen", K=2, spec="longrun")
+summary(cajo)
+plotres(cajo)
+#Residuals and their ACF’s and PACF’s for AAA and BAA suggests cointegration model might be able to fit
+```
+&nbsp;
+&nbsp;
+
+#Johansen test
+```{r}
+barplot(cajo@cval[1,],main = "Johansen test h<=1",col = "red")
+abline(h=cajo@teststat[1], col="blue")
+legend("topleft", c("critical values","test statistics"), lwd=2,col = c("red","blue"), bty="n")
+
+barplot(cajo@cval[2,],main = "Johansen test h=0",col = "red", ylim=c(0,20))
+abline(h=cajo@teststat[2], col="blue")
+legend("topleft", c("critical values","test statistics"), lwd=2,col = c("red","blue"), bty="n")
+```
+
+Conclusion: the cointegrating order equals 1.\
+&nbsp;
+&nbsp;
+
+#Find  cointegration vector
+
+```{r}
+a_1<- cajo@V[,1]
+z_t1= data %*% a_1
+zar <-ar(z_t1,  aic = TRUE,method = "yule-walker")
+zar$order
+
+polyPar<-c(1,-zar$ar)
+r18<-polyroot(polyPar)
+Mod(r18)
+#All the roots are greater than 1
+```
+&nbsp;
+&nbsp;
+
+#Prediction BAA Yield
+
+```{r}
+mu <-cajo@GAMMA[,1]
+PI<-cajo@PI
+Gamma<-cajo@GAMMA[,2:3]
+dX_1 <- cajo@Z0
+X_2 <- cajo@ZK
+
+deltaX_t_1 <- Gamma %*% t(dX_1) + PI %*%t(X_2) 
+deltaX_t_1<-apply(deltaX_t_1,2,"+",mu)
+
+nrowsdata <- dim(data)[1]
+data_t_2 = data[3:nrowsdata,]
+deltaX_t_1 <- t(deltaX_t_1)
+forecX <- data_t_2+deltaX_t_1
+
+fr1 = cbind(baa1[3:length(baa1)],forecX[,1])
+matplot(fr1,col =c("blue","orange"),type="l",lwd=c(2,1),
+        main = "BAA Yield and prediction")
+legend("topright", c("BAA Yield","prediction"), lwd=c(2,1),
+       col = c("blue","orange"), bty="n")
+```
+&nbsp;
+&nbsp;
+
+#Prediction AAA Yield
+
+```{r}
+fr3 = cbind(aaa1[3:length(aaa1)],forecX[,2])
+matplot(fr3,col =c("blue","orange"),type="l",lwd=c(2,1),
+        main = "AAA Yield and prediction")
+legend("topright", c("AAA Yield","prediction"), lwd=c(2,1),
+       col = c("blue","orange"), bty="n")
+
+#both prediction plots look reasonable
+```
+
+
+#error of prediction plot
+```{r}
+cerror1<-baa1[3:length(baa1)]-forecX[,1]
+cerror3<-aaa1[3:length(aaa1)]-forecX[,2]
+matplot(cerror1,main = " Error of Prediction of BAA Yield",type = "l")
+matplot(cerror3,main = " Error of Prediction of AAA Yield",type = "l")
+
+#error of prediction plots for both AAA and BAA look random.
+```
+
+
+#Pick which model is better
+
+```{r}
+cc1<-diff(baa1)
+cc3<-diff(aaa1)
+clinreg_900 <-lm(cc3~cc1-1)
+cresiduals_900 <- clinreg_900$residuals
+acf(cresiduals_900,main = "ACF of residuals",col ="blue",lty=1 ,lwd = 4)
+
+
+#we select model MA(1)
+ma1_900<-arima(cresiduals_900,order=c(0,0,1))
+theta1_900 <- ma1_900$coef[1]
+ma1_900res<-residuals(ma1_900)
+a_t_900 <- theta1_900 *ma1_900res
+
+x_3_900<-aaa1[-length(aaa1)]
+forec_900 <- x_3_900 + clinreg_900$coefficients*cc1+a_t_900
+
+linregerror_900 <- aaa1[-1]-forec_900
+errors<-cbind(linregerror_900[-1],cerror3)
+
+matplot(errors,type ="l",col = c("orange","blue"),lwd=2,
+        main = "3-Year Yield Errors for Regression and Cointegration Model")
+legend("topright", c("regression errors","cointegration errors"), lwd=2,
+       col = c("red","blue"), bty="n")
+```
+
+Conclusion: Based on the error graph above, in general, the variance level of cointegration errors is lower than for errors of the regression model. Hence, we conclude that the cointegration model is the better model for this data.\

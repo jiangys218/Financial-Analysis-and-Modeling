@@ -1,0 +1,82 @@
+---
+title: "FA Assignment 6"
+author: "Yunshuang Jiang"
+date: "2/15/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+A stock index is currently at 810 and has volatility of 20%.\
+The risk-free rate is 5% per year.\
+Assume that dividend yield equals 1%.\
+&nbsp;
+&nbsp;
+
+Price European 6-month call option with strike 800 using EuropeanOption() from RQuantLib.
+Calculate the same premium manually using the formulas on the last slide of the lecture notes.\
+
+```{r}
+library(RQuantLib)
+
+Option.Type = "call"
+Underlying.Price = 810
+Strike = 800
+Option.Rate = 0.05
+dividendYield = 0.01
+volatility = 0.2
+Expiry = 0.5
+
+#Call without dividend
+call= EuropeanOption(type=Option.Type, underlying=Underlying.Price,strike=Strike,
+                     dividendYield=0,riskFreeRate=Option.Rate, maturity=Expiry, volatility=volatility)
+call
+
+#Call without dividend manually
+d1 = (log(Underlying.Price/Strike) + (Option.Rate+(volatility^2)/2)*Expiry)/ (volatility*sqrt(Expiry))
+d2 = d1 - (volatility*sqrt(Expiry))
+call.manual = Underlying.Price*pnorm(d1) - Strike*(exp(-Option.Rate*Expiry))*pnorm(d2)
+call.manual  
+
+```
+&nbsp;
+&nbsp;
+
+Think how dividend yield should affect option price.\
+Comment: With dividend yield, the call price should decrease.\
+
+Experiment with the function EuropeanOption() with zero or non-zero dividend yield and find how the Black-Scholes formula on slide 17 should be modified for dividend yield.\
+
+```{r}
+#Call with dividend
+call.withdiv= EuropeanOption(type=Option.Type, underlying=Underlying.Price,strike=Strike, dividendYield=dividendYield,riskFreeRate=Option.Rate, maturity=Expiry, volatility=volatility)
+call.withdiv
+
+#Call with dividend manually
+d1.div = (log(Underlying.Price/Strike) + (Option.Rate-dividendYield+(volatility^2)/2)*Expiry)/ (volatility*sqrt(Expiry))
+d2.div = d1.div - (volatility*sqrt(Expiry))
+call.div.manual = (Underlying.Price*exp(-dividendYield*Expiry))*pnorm(d1.div) - Strike*(exp(-Option.Rate*Expiry))*pnorm(d2.div)
+call.div.manual
+```
+
+Black-Scholes formula with dividend rate q.\
+$$d1 = \frac{(ln(\frac{S_{0}}{K})+(R-q+ \frac{\sigma^2}{2}) \times T)}{\sigma \times \sqrt{T}}$$ 
+$$d2 = d1 - \sigma \times \sqrt{T}$$  
+$$C = S_{0}\times e^{qT} \times \mathcal{N}(d1) -Ke^{-RT}\times \mathcal{N}(d2)$$
+
+Calculate the premium of put option with the same expiry and same strike using put-call parity.\
+
+```{r}
+#put without dividend
+put = call$value + exp(-Option.Rate*Expiry)*Strike - Underlying.Price
+put
+```
+
+```{r}
+#put with dividend
+put.withdiv = call.withdiv$value + exp(-Option.Rate*Expiry)*Strike*(1+dividendYield) - Underlying.Price
+put.withdiv
+```
+

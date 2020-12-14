@@ -1,0 +1,118 @@
+---
+title: "FA Assignment 4"
+author: "Yunshuang Jiang"
+date: "2/2/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+7. Consider the quarterly earnings per share of the Johnson & Johnson from the first quarter of 1992 to the second quarter of 2011. The data are in the file q-jnj-earns-9211.txt and are obtained from the First Call Historical Database of Thomson Reuters. Take log transformation of the data if necessary. Build a time series model for the data. Perform model checking to assess the adequacy of the fitted model. Write down the model. Refit the model using data from 1992 to 2008. Perform 1-step to 10-step ahead forecasts of the quarterly earnings and obtain a forecast plot.
+
+```{r}
+#load data
+jj <- read.csv("~/Downloads/assignments_Fonancial Analytics (32001)_Lecture 4_q-jnj-earns-9211.txt", sep="")
+
+#initial graphs 
+plot(jj$earns,type='l', ylab='growth') 
+
+#the plot suggests seasonal patterns, we try taking the log and difference of the earnings
+jjlog=log(jj$earns)
+djjlog=diff(jjlog)
+djjlog4=diff(jjlog,4)
+ddjjlog=diff(djjlog4)
+par(mfcol=c(2,2))
+acf(jjlog,lag=20)
+acf(djjlog,lag=20)
+acf(djjlog4,lag=20)
+acf(ddjjlog,lag=20)
+
+c1=c("2","3","4","1")
+c2=c("1","2","3","4")
+par(mfcol=c(3,1))
+plot(djjlog,ylab='diff',type='l')
+points(djjlog,pch=c1,cex=0.7)
+plot(djjlog4,ylab='sea-diff',type='l')
+points(djjlog4,pch=c2,cex=0.7)
+plot(ddjjlog,ylab='dd',type='l')
+points(ddjjlog,pch=c1,cex=0.7) 
+
+```
+
+```{r}
+#build time series model
+
+m1=arima(jjlog,order=c(0,1,2),seasonal=list(order=c(0,1,1),period=4))
+m2=arima(jjlog,order=c(0,1,1),seasonal=list(order=c(1,1,0),period=4))
+m3=arima(jjlog,order=c(2,1,0),seasonal=list(order=c(0,1,1),period=4))
+m4=arima(jjlog,order=c(1,1,0),seasonal=list(order=c(1,1,0),period=4))
+
+aic <- c("m1" =m1$aic, "m2"=m2$aic, "m3"=m3$aic, "m4"=m4$aic)
+aic
+
+#Based on AIC, we select model 1 as our final model. 
+m1
+
+#model check 
+tsdiag(m1,gof=20) 
+Box.test(m1$residuals,lag=12,type='Ljung')
+pp=1-pchisq(2.8062,11)
+pp
+
+#Conclusion: Since pvalue = 0.993047 > alpha = 0.05, 
+#so we cannot reject the hypothesis that all autocorrelations are equal to zero.
+```
+
+
+Fitted Model:
+$$(1-B) \times (1-B^4) \times X_t = (1 -0.1796B^4)(1 -0.2713B  -0.1693B^2) \times Z_t$$ 
+
+
+```{r}
+#refit the model using data from 1992-2008
+
+#1)subset the data
+jjnew <- jj[1:68,]
+jjnewlog <- log(jjnew$earns)
+
+#2)refit the model
+m1new=arima(jjnewlog,order=c(0,1,2),seasonal=list(order=c(0,1,1),period=4))
+
+
+#3)model check 
+tsdiag(m1new,gof=20) 
+Box.test(m1new$residuals,lag=12,type='Ljung')
+pp=1-pchisq(2.6892,11)
+pp
+
+```
+
+```{r}
+#perform 1-step to 10-step ahead forecast of quarterly earnings
+prd<-predict(m1new,10)
+
+#forecast plot
+pred=prd$pred
+se=prd$se
+ko=jj$earns # actual observations
+fore=exp(pred+se^2/2) #point forecasts, delogged
+v1=exp(2*pred+se^2)*(exp(se^2)-1)
+s1=sqrt(v1) # std of the forecast error
+eps=ko[50:78]
+
+tdx=(c(1:length(eps)))/4+1992
+upp=c(ko[68],fore+2*s1) # upper band (+2*std)
+low=c(ko[68],fore-2*s1) # lower band (-2*std)
+min(low,eps)
+max(upp,eps)
+
+plot(tdx,eps,xlab='year',ylab='earnings',type='l',ylim=c(0.50,2.5))
+points(tdx[(length(eps)-9):length(eps)],fore,pch='*')
+lines(tdx[(length(eps)-10):length(eps)],upp,lty=2)
+lines(tdx[(length(eps)-10):length(eps)],low,lty=2)
+points(tdx[(length(eps)-9):length(eps)],ko[69:78],pch='o',cex=0.7)
+
+```
+

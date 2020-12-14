@@ -1,0 +1,108 @@
+---
+title: "FA Assignment 2"
+author: "Yunshuang Jiang"
+date: "1/17/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load data
+```{r}
+library(quantmod)
+library(lubridate)
+datapath = "/Users/berryjiang/Downloads/"
+SP500.Industrials.Health<-read.csv(file=paste(datapath,"Industrials_Health_Names.csv",sep="/"),header=F)
+SP500.Industrials.Health.names<-as.character(SP500.Industrials.Health[,1])
+suppressWarnings(getSymbols(SP500.Industrials.Health.names,from="2014-7-1",to="2015-7-1"))
+suppressWarnings(getSymbols("XLV",from="2014-7-1",to="2015-7-1"))
+suppressWarnings(getSymbols("XLI",from="2014-7-1",to="2015-7-1"))
+suppressWarnings(getSymbols("SPY",from="2014-7-1",to="2015-7-1"))
+
+FedFunds.BD<-read.csv(file=paste(datapath,"RIFSPFF_NB.csv",sep="/"))
+FedFunds.BD.2014<-FedFunds.BD[15093:15344,]
+
+Industrials.Health = cbind(CAT[,6], FDX[,6], GE[,6],HON[,6], LMT[,6], NOC[,6], UNP[,6], CVS[,6],
+                           UPS[,6], UTX[,6], WM[,6], ABT[,6], HUM[,6], JNJ[,6], MDT[,6], PFE[,6])
+```
+
+#1 Efficient frontier
+```{r}
+library(stringr)
+Mean.Sd.Industrials.Health<-cbind(sd=apply(Industrials.Health,2,function(z) sd(diff(log(z)))),
+                               mean=apply(Industrials.Health,2,function(z) mean(diff(log(z)))))
+
+Mean.FedFunds<-mean(FedFunds.BD.2014[,2])/100/360
+
+Mean.Sd.indices <- cbind(sd=apply(cbind(XLV[,6],XLI[,6],SPY[,6]),2,function(z) sd(diff(log(z)))),
+                        mean=apply(cbind(XLV[,6],XLI[,6],SPY[,6]),2,function(z) mean(diff(log(z)))))
+```
+
+```{r}
+plot(Mean.Sd.Industrials.Health,ylab="Mean",xlab="Sd",pch=19,xlim=c(0,.03))
+points(Mean.Sd.indices[3,1],Mean.Sd.indices[3,2],col="red",pch=19)
+points(Mean.Sd.indices[1,1],Mean.Sd.indices[1,2],col="blue",pch=19)
+points(Mean.Sd.indices[2,1],Mean.Sd.indices[2,2],col="purple",pch=19)
+points(0,Mean.FedFunds,col="green",pch=19)
+lines(c(0,Mean.Sd.indices[3,1]),c(Mean.FedFunds, Mean.Sd.indices[3,2]))
+text(Mean.Sd.Industrials.Health,
+     labels=str_sub(rownames(Mean.Sd.Industrials.Health),1,-10),cex=.5,pos=2)
+text(Mean.Sd.indices, labels = str_sub(rownames(Mean.Sd.indices), 1, -10),cex=0.5,pos=2)
+text(c(0,Mean.FedFunds), labels = "Risk Free", cex=0.5, pos=2)
+```
+
+
+#2 CAPM
+```{r}
+FedFunds.BD.2014.daily<-FedFunds.BD.2014[-1,2]/100/360
+SP500.companies_Excess<-apply(Industrials.Health,2,function(z) diff(log(z))-FedFunds.BD.2014.daily)
+SPY_Excess <- (diff(log(SPY$SPY.Adjusted))[-1,]-FedFunds.BD.2014.daily)
+SP500.companies.betas<-as.matrix(apply(SP500.companies_Excess,2,function(z) 
+  lm(z~-1+SPY_Excess)$coefficients))
+rownames(SP500.companies.betas)<-str_sub(rownames(Mean.Sd.Industrials.Health), 1, -10)
+```
+
+```{r}
+plot(SP500.companies.betas, Mean.Sd.Industrials.Health[,2],
+     ylab="SP500.companies.returns",pch=19,xlim=c(0,2))
+points(1,Mean.Sd.indices[3,2],col="red",pch=19)
+points(0,Mean.FedFunds,col="green",pch=19)
+lines(c(0,1),c(Mean.FedFunds,Mean.Sd.indices[3,2]))
+text(SP500.companies.betas,Mean.Sd.Industrials.Health[,2],labels= str_sub(rownames(Mean.Sd.Industrials.Health), 1, -10),cex=.5,pos=2)
+text(1,Mean.Sd.indices[3,2],labels="SPY",cex=.5,col="red",pos=2)
+```
+
+#3 Arbitrage Pricing Theory
+```{r}
+Industrials.Health.Returns<-apply(Industrials.Health,2,function(z) diff(log(z)))
+SPY.returns <- diff(log(SPY$SPY.Adjusted))[-1,]
+XLI.returns<- diff(log(XLI$XLI.Adjusted))[-1]
+XLV.returns <- diff(log(XLV$XLV.Adjusted))[-1]
+
+Industrials.Health.Returns.PCA<-princomp(Industrials.Health.Returns)
+cumsum(Industrials.Health.Returns.PCA$sdev/sum(Industrials.Health.Returns.PCA$sdev))
+
+#I only selected 5 factors as they explained over 50% variances
+Industrials.Health.Returns.PCA.factors<-as.matrix(Industrials.Health.Returns.PCA$scores[,1:5])
+Stock.portfolio.betas<-apply(Industrials.Health.Returns,2,
+                             function(z) lm(z~Industrials.Health.Returns.PCA.factors[,1]+
+                                              Industrials.Health.Returns.PCA.factors[,2]+
+                                              Industrials.Health.Returns.PCA.factors[,3]+
+                                              Industrials.Health.Returns.PCA.factors[,4]+
+                                              Industrials.Health.Returns.PCA.factors[,5])$coefficients)
+rownames(Stock.portfolio.betas)<-c("Alpha","Factor.1","Factor.2","Factor.3","Factor.4","Factor.5")
+Stock.portfolio.betas<-as.data.frame(t(Stock.portfolio.betas))
+
+Market.Prices.of.risk.fit<-lm(I(Alpha-Mean.FedFunds)~.-1,data=Stock.portfolio.betas)
+Market.Prices.of.risk<-c(Mean.FedFunds,Market.Prices.of.risk.fit$coefficients)
+```
+
+```{r}
+plot(Market.Prices.of.risk.fit$residuals,type="h",xaxt="n",xlab="Stock")
+abline(h=0)
+axis(1, at=1:16, labels=str_sub(rownames(Mean.Sd.Industrials.Health), 1, -10), cex.axis=0.5)
+```
+
+

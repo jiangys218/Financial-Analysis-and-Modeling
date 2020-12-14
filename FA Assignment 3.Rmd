@@ -1,0 +1,149 @@
+---
+title: "FA Assignment 3"
+author: "Yunshuang Jiang"
+date: "1/28/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+P125 #2
+
+Consider the monthly simple returns of CRSP Decile 1, 2, 5, 9, and 10 portfolios based on the market capitalization of NYSE/AMEX/NASDAQ. The data span is from January 1961 to September 2011.
+
+```{r}
+CRSP <- read.csv("~/Downloads/assignments_Fonancial Analytics (32001)_Lecture 3_m-dec125910-6111.txt",
+                 row.names=1, sep="")
+```
+
+
+a) For the return series of Decile 2 and Decile 10, test the null hypothesis
+that the first 12 lags of autocorrelations are 0 at the 5% level. Draw your conclusion.
+
+```{r}
+Box.test(CRSP$dec2,lag=12,type='Ljung')
+```
+
+Conclusion: The p-value is 0.1431, hence, we conclude that we can't reject the hypothesis that the first 12 lags of autocorrelations are equal to 0.
+
+```{r}
+Box.test(CRSP$dec10,lag=12,type='Ljung')
+```
+
+Conclusion: The p-value is less than 0.05, hence, we conclude that the first 12 lags of autocorrelations are significantly different from 0 at 5% significant level. 
+
+
+
+b) Build an ARMA model for the return series of Decile 2. Perform model checking and write down the fitted model.
+
+```{r}
+#initial graphs to see if we need transformation 
+plot(ts(CRSP$dec2,frequency=12,start=c(1961,1))) 
+acf(CRSP$dec2,lag=12)
+pacf(CRSP$dec2,lag=12)
+# We conclude that we do not need transformation as the acf and pacf graphs looks normal.
+```
+```{r}
+#select model
+
+suppressWarnings(library(TSA))
+m1=eacf(CRSP$dec2,12,12)
+Compare.with<-2/sqrt(length(CRSP$dec2))
+print(abs(m1$eacf)-Compare.with,digits=2)
+
+# models selected ARIMA(1,0,1) and ARIMA(0,0,1)
+
+arima101 <- arima(CRSP$dec2,order=c(1,0,1))
+arima101
+
+arima001 <- arima(CRSP$dec2,order=c(0,0,1))
+arima001
+
+#compare AIC for the two models: 
+aic <- c("arima010" =arima101$aic, "arima001"=arima001$aic)
+aic
+
+#Conclusion: we select model ARIMA(0,0,1) as our final model based on AIC. 
+```
+
+```{r}
+#model check 
+Box.test(arima101$residuals,lag=12,type='Ljung')
+pp=1-pchisq(7.7156,11)
+pp
+```
+
+Conclusion: Since pvalue = 0.7385307 > alpha = 0.05, so we cannot reject the hypothesis that all autocorrelations are equal to zero.
+
+
+Fitted Model: $$ x_t = 0.0093 + 0.1307 \times \epsilon_{t-1} + \epsilon_t $$
+
+
+c) Use the fitted ARMA model to produce 1- to 12-step ahead forecasts of the series and the associated standard errors of forecasts.
+
+```{r}
+prd<-predict(arima001,12)
+cbind(Actual=tail(CRSP$dec2,12),Predicted=as.vector(prd$pred),Standard.Error=as.vector(prd$se))
+```
+
+
+
+P126 #4
+
+Consider the monthly yields of Moody’s Aaa & Baa seasoned bonds from January 1919 to November, 2011. The data are obtained from FRED of Federal Reserve Bank of St. Louis. Consider the log series of monthly Aaa bond yields. Build a time series model for the series, including model checking.
+
+```{r}
+#initial graphs
+aaa <- read.csv("~/Downloads/assignments_Fonancial Analytics (32001)_Lecture 3_m-aaa-1911.txt", sep="")
+
+aaalog <- log(aaa$yield)
+tdx=c(1:1116)/4+1919
+plot(tdx[2:1116],aaalog,type='l',xlab='year',ylab='growth') 
+acf(aaalog,lag=12)
+pacf(aaalog,lag=12)
+```
+
+Consideration: the return graph as well as the acf graph suggest that transformation is required to reach stationary. Hence, we take the first order transformation by using the diff() function. 
+
+
+```{r}
+aaalogdiff <- diff(log(aaa$yield))
+plot(tdx[2:1115],aaalogdiff,type='l',xlab='year',ylab='growth')
+acf(aaalogdiff,lag=12)
+pacf(aaalogdiff,lag=12)
+
+#Based on the plot and acf, pacf graphs, we conclude that diff(log(aaa_yield)) is stationary.
+```
+
+
+```{r}
+#select model
+m2=eacf(aaalogdiff,12,12)
+Compare.with<-2/sqrt(length(aaalog))
+print(abs(m2$eacf)-Compare.with,digits=2)
+
+#We select model ARIMA(0,0,1) and ARIMA(1,0,2)
+
+arima001=arima(aaalogdiff,order=c(0,0,1))
+arima001
+
+arima102=arima(aaalogdiff,order=c(1,0,2))
+arima102
+
+aic1 <- c("arima001" =arima001$aic, "arima102"=arima102$aic)
+aic1
+
+#Based on AIC, we selected model ARIMA(0,0,1) as our final model.  
+#The fitted model is: x_t = -0.0003 + 0.3696 \times \epsilon_{t-1} + \epsilon_t
+
+#Check model
+tsdiag(arima001,gof=12)
+Box.test(arima001$residuals,lag=12,type='Ljung')
+pp=1-pchisq(14.563,11)
+pp
+```
+
+Conclusion: #Since pvalue = 0.2033895 > alpha = 0.05, so we cannot reject the hypothesis that all autocorrelations are equal to zero.

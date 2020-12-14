@@ -1,0 +1,74 @@
+---
+title: "FA Assignment 1"
+author: "Yunshuang Jiang"
+date: "1/11/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#2 Download and analyze excess returns of S&P 500
+
+Calculate continuous daily excess returns of SP500 (“^GSPC”) for the period from 1/1/2014 until 12/31/2014 using overnight Fed Funds rates as risk-free rates.
+```{r message=FALSE}
+library(quantmod)
+getSymbols('^GSPC',from='2014-01-01',to='2014-12-31')
+GSPC.return <- diff(log(GSPC$GSPC.Close))
+library(readr)
+FRB_H15 <- read_csv("FRB_H15.csv")[6:370,]
+fedrate.return <- diff(log((as.numeric(FRB_H15$`Federal funds effective rate`))/360+1))
+library(dplyr)
+GSPC.return <- data.frame(Date=row.names(as.data.frame(GSPC.return)), Return=GSPC.return)
+Fed.return <- data.frame(Date=FRB_H15$`Series Description`[-1], Return=fedrate.return)
+join.data <- inner_join(x=GSPC.return,y=Fed.return, by="Date")
+excess.return = (join.data$GSPC.Close-join.data$Return)*100
+excessreturn = data.frame(Date = row.names(as.data.frame(GSPC.return)),
+                            excess_return = excess.return)
+excessreturn
+```
+
+#3 Download and analyze exchange rates
+
+1) Find out how to download:
+GBP/USD exchange rate, i.e. price of 1 British pound in US dollars, from Oanda using quantmode;
+USD/JPY exchange rate, i.e. price of 1 US dollar in Japanese yen, from Oanda using quantmode.
+```{r}
+library(quantmod)
+GBP.USD <- getSymbols.oanda("GBP/USD", auto.assign=FALSE)
+USD.JPY <- getSymbols.oanda("USD/JPY", auto.assign=FALSE)
+GBP.USD
+USD.JPY
+```
+
+
+2) Calculate daily log returns of both exchange rates
+```{r}
+GBP.USD.logrtn<- diff(log(GBP.USD$GBP.USD))
+USD.JPY.logrtn <- diff(log(USD.JPY$USD.JPY))
+GBP.USD.logrtn
+USD.JPY.logrtn
+```
+
+
+3) Calculate sample min, mean, sd, skewness, kurtosis, max of log returns for both exchange rates
+```{r}
+library(fBasics)
+GBP.USD.stats <- basicStats(GBP.USD.logrtn)
+GBP.USD.maxlogrtn <- max(GBP.USD.logrtn, na.rm=TRUE)
+USD.JPY.stats <- basicStats(GBP.USD.logrtn)
+USD.JPY.maxlogrtn <- max(USD.JPY.logrtn, na.rm=TRUE)
+GBP.USD.stats
+GBP.USD.maxlogrtn
+USD.JPY.stats
+USD.JPY.maxlogrtn
+```
+
+
+4) Test hypothesis H0rr:U=0 against alternative H0:U!=0
+```{r}
+t.test(as.data.frame(GBP.USD.logrtn)$GBP.USD)
+t.test(as.data.frame(USD.JPY.logrtn)$USD.JPY)
+```
+

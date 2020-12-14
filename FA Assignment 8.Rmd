@@ -1,0 +1,135 @@
+---
+title: "FA Assignment 8"
+author: "Yunshuang Jiang"
+date: "3/5/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Exercise 1 on page 239.\
+Answer questions using 5% significance level in tests and 10 lags of serial correlations for return series.\
+
+Consider daily returns of ETF SPDR S&P 500 from file d-spy-0111.txt.\
+Transform the simple returns into log-returns\
+
+```{r}
+dat <- read.csv("~/Downloads/assignments_Fonancial Analytics (32001)_Lecture 8_d-spy-0111.txt", sep="")
+dat$rtn = log(dat$rtn+1)
+rtn=ts(dat$rtn,frequency=250,start=c(2001,9))
+```
+
+
+a). Is the expected log-return zero? Are there any serial correlations in the log returns? Is there ARCH effect in the log-returns?\
+
+```{r}
+plot(rtn,type='l',xlab='year',ylab='rtn')
+t.test(dat$rtn)
+#the p-value is not small enough to reject the null hypothesis, 
+#hence we conclude that the true mean of the log return is equal to 0.
+
+Box.test(dat$rtn,lag=10,type='Ljung')
+Box.test(abs(dat$rtn),lag=10,type='Ljung')
+#the p-values for both the log return and the absolute log returns are 
+#small enough to reject the null hypothesis, hence we conclude that 
+#the serial correlations are not zero. 
+
+par(mfcol=c(2,1))
+acf(dat$rtn,lag=10) 
+acf(abs(dat$rtn),lag=10) 
+#While ACF of returns is not significantly different from zero for most
+#lags, the ACF of absolute log returns is outside the bounds.
+```
+
+```{r}
+## ARCH test
+y=dat$rtn-mean(dat$rtn)
+Box.test(y^2,lag=10,type='Ljung')
+#According to Box-Ljung test the zero correlations hypothesis is rejected.
+#This is an indication of ARCH effect.
+
+#ARCH test
+archTest <- function(rtn,m=10){
+  # Perform Lagrange Multiplier Test for ARCH effect of a time series
+  # rtn: time series
+  # m: selected AR order
+  #
+  y=(rtn-mean(rtn))^2
+  T=length(rtn)
+  atsq=y[(m+1):T]
+  x=matrix(0,(T-m),m)
+  for (i in 1:m){
+    x[,i]=y[(m+1-i):(T-i)]
+  }
+  md=lm(atsq~x)
+  summary(md)
+}
+
+archTest(y,10)
+#The p-value is small, hence the output confirms ARCH effect.
+```
+
+
+b). Fit Gaussian ARMA-GARCH model for the log-return series. Perform model checking. Obtain the QQ-plot of the standardized residuals. Write down the fitted model. [Hint: use GARCH(2,1)].\
+
+```{r}
+acf(dat$rtn^2)
+pacf(dat$rtn^2)
+suppressWarnings(library(fGarch))
+garch1=garchFit(~1+garch(2,1),data=dat$rtn,trace=F)
+summary(garch1)
+```
+
+Fitted Model:\
+
+$$ r_t = 0.00057243 + \sigma_t   \epsilon_t $$
+$$ \sigma_t^2 = 0.0000023226 + 0.0019896 a_{t-1}^2 + 0.11165 a_{t-2}^2 + 0.87049 \sigma_{t-1}^2$$
+
+```{r}
+#Analyze the residuals
+resi=residuals(garch1,standardize=T)
+tdx=c(1:2535)/250+2001
+par(mfcol=c(3,1))
+plot(tdx,resi,xlab='year',ylab='stand-resi',type='l')
+acf(resi,lag=10)
+pacf(resi^2,lag=10)
+
+#The ACF plot shows that standardized residuals do not have autocorrelation.
+#PACF for squared residuals shows there might be significant correlation at higher lags (log=10).
+
+qqnorm(resi, pch = 1, frame = FALSE)
+qqline(resi, col = "steelblue", lwd = 2)
+#The qq plot looks normal from -2 to 2 with some points at both tails are slightly off. 
+#We conclude that the residuals is distributed generally normal. 
+```
+
+
+c). Build an ARMA-GARCH model with Student t innovations for the log-return series. Perform model checking and write down the fitted model.\
+
+```{r}
+garch2=garchFit(~1+garch(2,1),data=dat$rtn,trace=F,cond.dist="std")
+summary(garch2)
+
+#Analyze the residuals
+tresi=residuals(garch2,standardize=T)
+tdx=c(1:2535)/250+2001
+par(mfcol=c(3,1))
+plot(tdx,tresi,xlab='year',ylab='stand-resi',type='l')
+acf(tresi,lag=10)
+pacf(tresi^2,lag=10)
+
+#The ACF plot shows that standardized residuals do not have autocorrelation.
+#PACF for squared residuals shows no significant correlation.
+
+qqnorm(tresi, pch = 1, frame = FALSE)
+qqline(tresi, col = "steelblue", lwd = 2)
+#The qq plot looks normal from -1 to 3 with some points at both left tails are slightly off. 
+#We conclude that the residuals is distributed generally normal.
+```
+
+Fitted Model:\
+
+$$ r_t = 0.00072454 + \sigma_t   \epsilon_t $$
+$$ \sigma_t^2 = 0.0000015793 + 0.0061117 a_{t-1}^2 + 0.11435 a_{t-2}^2 + 0.87418 \sigma_{t-1}^2$$
